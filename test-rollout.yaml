@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: test-rollout
+  namespace: test-experiments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-rollout
+  template:
+    metadata:
+      labels:
+        app: test-rollout
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+  strategy:
+    canary:
+      steps:
+      - setWeight: 50
+      - pause: {}

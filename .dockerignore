@@ -1,0 +1,53 @@
+# More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
+
+# Build artifacts
+bin/
+dist/
+
+# Test files
+*_test.go
+test/
+testdata/
+
+# Development files
+.git/
+.github/
+.vscode/
+.idea/
+
+# Documentation (except README.md)
+docs/
+*.md
+!README.md
+
+# Charts (not needed for controller build)
+charts/
+
+# Config files (not needed for controller build) 
+config/
+hack/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+*.sublime-project
+*.sublime-workspace
+
+# Log files
+*.log
+
+# Build cache
+.cache/

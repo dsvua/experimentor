@@ -1,0 +1,34 @@
+# Example ExperimentDeployment to demonstrate using the ping-pong app as a source
+# This creates an experiment version with different environment variables
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: {{ include "ping-pong.fullname" . }}-experiment
+  labels:
+    {{- include "ping-pong.labels" . | nindent 4 }}
+spec:
+  sourceRef:
+    kind: Deployment
+    name: {{ include "ping-pong.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+  replicas: 1
+  overrideSpec:
+    template:
+      metadata:
+        labels:
+          version: experiment
+      spec:
+        containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          ports:
+          - name: http
+            containerPort: 80
+            protocol: TCP
+          env:
+          - name: APP_VERSION
+            value: "v1.1.0-experiment"
+          - name: RESPONSE_MESSAGE
+            value: "pong-experiment"
+          - name: EXPERIMENT_FEATURE
+            value: "enabled"

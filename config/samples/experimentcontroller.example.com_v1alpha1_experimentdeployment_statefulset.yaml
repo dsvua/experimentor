@@ -1,0 +1,26 @@
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  labels:
+    app.kubernetes.io/name: experimentdeployment
+    app.kubernetes.io/instance: experimentdeployment-statefulset-sample
+    app.kubernetes.io/part-of: experiment-deployment
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: experiment-deployment
+  name: experimentdeployment-statefulset-sample
+spec:
+  sourceRef:
+    kind: StatefulSet
+    name: my-statefulset
+    # namespace: default  # If omitted, uses the same namespace as the ExperimentDeployment
+  replicas: 1
+  overrideSpec:
+    template:
+      spec:
+        containers:
+        - name: app
+          env:
+          - name: EXPERIMENT_MODE
+            value: "true"
+          - name: LOG_LEVEL
+            value: "debug"

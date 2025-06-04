@@ -1,0 +1,29 @@
+# Example ExperimentDeployment for Argo Rollout
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: ping-pong-rollout-experiment
+  namespace: default
+spec:
+  sourceRef:
+    name: {{ include "ping-pong-rollout.fullname" . }}
+    namespace: default
+    kind: Rollout
+  replicas: 1
+  overrideSpec:
+    template:
+      spec:
+        containers:
+        - name: ping-pong-rollout
+          env:
+          - name: RESPONSE_MESSAGE
+            value: "experimental-pong-rollout"
+          - name: APP_VERSION
+            value: "v1.0.0-experiment"
+          resources:
+            limits:
+              cpu: 50m
+              memory: 64Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi

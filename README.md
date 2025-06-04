@@ -1,0 +1,356 @@
+# Experimentor
+
+A Kubernetes controller for creating experiment versions of production workloads. Experimentor allows you to safely test changes by creating modified copies of your existing Deployments, StatefulSets, or Argo Rollouts that share the same service for traffic distribution.
+
+## Description
+
+Experimentor implements an `ExperimentDeployment` Custom Resource Definition (CRD) that enables you to create smaller "experiment" versions of existing workloads by applying selective overrides to the source workload's spec. This is particularly useful for:
+
+- **A/B Testing**: Run different versions of your application with traffic splitting
+- **Feature Testing**: Test new features with a subset of users
+- **Performance Testing**: Compare resource configurations or different images
+- **Configuration Testing**: Test different environment variables or settings
+
+The controller automatically handles:
+- Deep merging of override specifications with source workloads
+- Service discovery (experiment pods share the same service as source workloads)
+- Automatic cleanup when experiments are deleted
+- Owner references for proper garbage collection
+
+## How Experiment Creation Works
+
+1. **Source Reference**: You specify a source workload (Deployment, StatefulSet, or Rollout)
+2. **Deep Merge**: The controller fetches the source workload and applies your override spec using deep merging
+3. **Experiment Creation**: A new workload is created with the merged specification
+4. **Service Sharing**: Experiment pods inherit labels from source pods, so they're included in the same service
+5. **Traffic Distribution**: Traffic is automatically distributed between source and experiment pods
+
+### Deep Merge Behavior
+
+The controller uses intelligent deep merging:
+- **Scalars and objects** are replaced when specified in overrides
+- **Container arrays** are merged by name - you only need to specify the fields you want to change
+- **Other fields** are preserved from the source workload
+
+Example: To change just the image tag, you only need:
+```yaml
+overrideSpec:
+  template:
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:v2.0.0  # Only specify what you want to change
+```
+
+All other container properties (ports, env vars, resources, probes, etc.) are automatically preserved.
+
+## Getting Started
+
+### Prerequisites
+- go version v1.23.0+
+- docker version 17.03+
+- kubectl version v1.11.3+
+- Access to a Kubernetes v1.11.3+ cluster
+
+### Installation
+
+#### Option 1: Using Helm (Recommended)
+
+1. **Install the controller:**
+```bash
+helm install experiment-controller ./charts/experiment-controller/ \
+  --namespace experiment-system \
+  --create-namespace
+```
+
+2. **Deploy test applications:**
+```bash
+# Deployment-based test app
+helm install ping-pong ./charts/ping-pong/ \
+  --namespace default
+
+# StatefulSet-based test app  
+helm install ping-pong-statefulset ./charts/ping-pong-statefulset/ \
+  --namespace default
+
+# Argo Rollout-based test app (requires Argo Rollouts controller)
+helm install ping-pong-rollout ./charts/ping-pong-rollout/ \
+  --namespace default
+```
+
+#### Option 2: Using Kustomize
+
+1. **Build and push your image:**
+```bash
+make docker-build docker-push IMG=<some-registry>/experimentor:tag
+```
+
+2. **Install the CRDs:**
+```bash
+make install
+```
+
+3. **Deploy the controller:**
+```bash
+make deploy IMG=<some-registry>/experimentor:tag
+```
+
+## Creating Experiments
+
+### Basic ExperimentDeployment Structure
+
+```yaml
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: my-experiment           # Name of your experiment
+  namespace: default           # Namespace where experiment will be created
+spec:
+  sourceRef:                   # REQUIRED: Reference to source workload
+    kind: Deployment           # REQUIRED: Deployment, StatefulSet, or Rollout
+    name: my-app              # REQUIRED: Name of source workload
+    namespace: default        # OPTIONAL: Defaults to experiment's namespace
+  replicas: 1                 # OPTIONAL: Defaults to 1
+  overrideSpec:               # REQUIRED: Overrides to apply
+    # Any valid Deployment/StatefulSet/Rollout spec fields
+```
+
+### Field Reference
+
+#### Required Fields
+- `spec.sourceRef.kind`: Type of source workload (`Deployment`, `StatefulSet`, `Rollout`)
+- `spec.sourceRef.name`: Name of the source workload
+- `spec.overrideSpec`: Override specification (can be empty `{}` but must be present)
+
+#### Optional Fields
+- `spec.sourceRef.namespace`: Source workload namespace (defaults to experiment's namespace)
+- `spec.replicas`: Number of experiment replicas (defaults to 1)
+
+### Example Use Cases
+
+#### 1. Simple Image Change
+Test a new image version while preserving all other settings:
+
+```yaml
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: my-app-v2-test
+spec:
+  sourceRef:
+    kind: Deployment
+    name: my-app
+  replicas: 1
+  overrideSpec:
+    template:
+      spec:
+        containers:
+        - name: my-app
+          image: my-app:v2.0.0
+```
+
+#### 2. Environment Variable Changes
+Test different configuration settings:
+
+```yaml
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: my-app-feature-test
+spec:
+  sourceRef:
+    kind: Deployment
+    name: my-app
+  replicas: 2
+  overrideSpec:
+    template:
+      metadata:
+        labels:
+          version: experimental
+      spec:
+        containers:
+        - name: my-app
+          env:
+          - name: FEATURE_FLAG_X
+            value: "enabled"
+          - name: LOG_LEVEL
+            value: "debug"
+```
+
+#### 3. Resource Configuration Testing
+Test different resource allocations:
+
+```yaml
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: my-app-optimized-resources
+spec:
+  sourceRef:
+    kind: Deployment
+    name: my-app
+  overrideSpec:
+    template:
+      spec:
+        containers:
+        - name: my-app
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+```
+
+#### 4. StatefulSet Experiments
+Test changes to StatefulSet workloads:
+
+```yaml
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: my-statefulset-experiment
+spec:
+  sourceRef:
+    kind: StatefulSet
+    name: my-database
+  replicas: 1
+  overrideSpec:
+    template:
+      spec:
+        containers:
+        - name: my-database
+          image: my-database:v2.0.0
+          env:
+          - name: DB_CACHE_SIZE
+            value: "256MB"
+```
+
+#### 5. Argo Rollout Experiments
+Test changes to Argo Rollout workloads:
+
+```yaml
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  name: my-rollout-experiment
+spec:
+  sourceRef:
+    kind: Rollout
+    name: my-app-rollout
+  replicas: 1
+  overrideSpec:
+    template:
+      spec:
+        containers:
+        - name: my-app
+          image: my-app:canary-build
+          env:
+          - name: CANARY_FEATURE
+            value: "enabled"
+```
+
+## Monitoring Experiments
+
+### Check Experiment Status
+```bash
+kubectl get experimentdeployment
+kubectl describe experimentdeployment my-experiment
+```
+
+### View Experiment Pods
+```bash
+kubectl get pods -l experiment-controller.example.com/role=experiment
+```
+
+### Check Service Endpoints
+Verify both source and experiment pods are receiving traffic:
+```bash
+kubectl get endpoints my-app-service
+```
+
+### Examine Experiment Workload
+```bash
+kubectl get deployment my-experiment
+kubectl describe deployment my-experiment
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Experiment Not Creating Pods**
+   - Check if the source workload exists and is in the correct namespace
+   - Verify the override spec is valid YAML
+   - Check controller logs: `kubectl logs -n experiment-system deployment/experiment-controller`
+
+2. **Experiment Pods Not Receiving Traffic**
+   - Ensure experiment pods have the same labels as source pods for service selection
+   - Check service selector: `kubectl describe service my-app-service`
+   - Verify endpoints: `kubectl get endpoints my-app-service`
+
+3. **Merge Issues**
+   - The controller preserves all source workload properties except those explicitly overridden
+   - For containers, specify the container name to target specific containers
+   - Check the generated experiment workload: `kubectl get deployment my-experiment -o yaml`
+
+### Cleanup
+
+```bash
+# Delete specific experiment
+kubectl delete experimentdeployment my-experiment
+
+# Delete all experiments
+kubectl delete experimentdeployment --all
+
+# Uninstall controller (Helm)
+helm uninstall experiment-controller -n experiment-system
+
+# Uninstall controller (Kustomize)
+make undeploy
+make uninstall
+```
+
+## Limitations
+
+- Experiment workloads are created in the same namespace as the ExperimentDeployment CR
+- Service sharing works through label inheritance - custom service selectors may need adjustment
+- For Argo Rollouts, complex deployment strategies are simplified in experiment versions
+
+## Development
+
+```bash
+# Build locally
+make build
+
+# Run tests
+make test
+
+# Run end-to-end tests (requires Kind cluster)
+make test-e2e
+
+# Code generation
+make manifests generate
+
+# Linting
+make lint
+```
+
+For detailed development instructions, see [CLAUDE.md](./CLAUDE.md).
+
+## License
+
+Copyright 2025.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

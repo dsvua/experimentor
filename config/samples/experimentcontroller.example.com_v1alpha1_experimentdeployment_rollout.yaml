@@ -1,0 +1,31 @@
+apiVersion: experimentcontroller.example.com/v1alpha1
+kind: ExperimentDeployment
+metadata:
+  labels:
+    app.kubernetes.io/name: experimentdeployment
+    app.kubernetes.io/instance: experimentdeployment-rollout-sample
+    app.kubernetes.io/part-of: experiment-deployment
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: experiment-deployment
+  name: experimentdeployment-rollout-sample
+spec:
+  sourceRef:
+    kind: Rollout
+    name: my-rollout
+    # namespace: default  # If omitted, uses the same namespace as the ExperimentDeployment
+  replicas: 2
+  overrideSpec:
+    strategy:
+      # For experiments, we might want to simplify the rollout strategy
+      canary:
+        steps:
+        - setWeight: 100  # Direct switch for experiments
+    template:
+      spec:
+        containers:
+        - name: app
+          env:
+          - name: EXPERIMENT_MODE
+            value: "true"
+          - name: FEATURE_FLAG_EXPERIMENT
+            value: "enabled"
