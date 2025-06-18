@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,17 +96,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	fmt.Println("DEBUG: This should appear in logs regardless of logger setup")
-	setupLog.Info("=== DEBUG: Starting manager setup ===")
-
-	// Debug Rollout scheme registration
-	setupLog.Info("Checking Rollout scheme registration...")
-	gvk := rolloutsv1alpha1.SchemeGroupVersion.WithKind("Rollout")
-	if obj, err := scheme.New(gvk); err != nil {
-		setupLog.Error(err, "Failed to create new Rollout object from scheme", "gvk", gvk)
-	} else {
-		setupLog.Info("Successfully created Rollout object from scheme", "gvk", gvk, "type", fmt.Sprintf("%T", obj))
-	}
+	setupLog.Info("Starting experiment controller manager")
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -198,7 +187,7 @@ func main() {
 		})
 	}
 
-	setupLog.Info("About to create manager...")
+	setupLog.Info("Creating controller manager")
 
 	// Parse watch namespaces
 	var cacheConfig ctrl.Options

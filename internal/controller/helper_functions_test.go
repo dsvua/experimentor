@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"testing"
 
 	rolloutsv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -21,10 +20,8 @@ import (
 	experimentcontrollercomv1alpha1 "experimentcontroller.example.com/experiment-deployment/api/v1alpha1"
 )
 
-func TestHelperFunctions(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Helper Functions Suite")
-}
+// TestHelperFunctions is consolidated into TestControllers in suite_test.go
+// This avoids having multiple RunSpecs() calls in the same package
 
 var _ = Describe("Helper Functions", func() {
 	var (

@@ -81,13 +81,23 @@ func (r *ExperimentDeploymentReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, err
 	}
 
+	// Validate the ExperimentDeployment before processing
+	if err := r.validateExperimentDeployment(experimentCR); err != nil {
+		log.Error(err, "ExperimentDeployment validation failed")
+		r.updateStatusConditions(experimentCR, "ValidationFailed", err.Error())
+		if updateErr := r.Status().Update(ctx, experimentCR); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after validation failure")
+		}
+		return ctrl.Result{}, err
+	}
+
 	// Handle deletion
 	if !experimentCR.ObjectMeta.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(experimentCR, experimentDeploymentFinalizer) {
 			log.Info("Handling deletion of ExperimentDeployment", "name", experimentCR.Name)
 
 			// Delete the experiment Deployment
-			experimentDeploymentName := fmt.Sprintf("%s-experiment", experimentCR.Spec.SourceRef.Name) // Assuming source name is stable for this
+			experimentDeploymentName := experimentCR.Name // Use the same naming as creation
 			err := r.deleteExperimentDeployment(ctx, experimentCR.Namespace, experimentDeploymentName)
 			if err != nil {
 				log.Error(err, "Failed to delete experiment Deployment during finalization")
@@ -1029,6 +1039,45 @@ func getDeploymentCondition(status appsv1.DeploymentStatus, condType appsv1.Depl
 			return &c
 		}
 	}
+	return nil
+}
+
+// validateExperimentDeployment performs basic validation on the ExperimentDeployment CR
+func (r *ExperimentDeploymentReconciler) validateExperimentDeployment(experimentCR *experimentcontrollercomv1alpha1.ExperimentDeployment) error {
+	// Validate SourceRef
+	if experimentCR.Spec.SourceRef.Kind == "" {
+		return fmt.Errorf("sourceRef.kind is required")
+	}
+	if experimentCR.Spec.SourceRef.Name == "" {
+		return fmt.Errorf("sourceRef.name is required")
+	}
+
+	// Validate Kind is supported
+	switch experimentCR.Spec.SourceRef.Kind {
+	case experimentcontrollercomv1alpha1.SourceKindDeployment,
+		experimentcontrollercomv1alpha1.SourceKindStatefulSet,
+		experimentcontrollercomv1alpha1.SourceKindRollout:
+		// Valid kinds
+	default:
+		return fmt.Errorf("unsupported sourceRef.kind: %s. Supported kinds are: Deployment, StatefulSet, Rollout", experimentCR.Spec.SourceRef.Kind)
+	}
+
+	// Validate replicas if specified
+	if experimentCR.Spec.Replicas != nil && *experimentCR.Spec.Replicas < 0 {
+		return fmt.Errorf("replicas cannot be negative")
+	}
+
+	// Validate overrideSpec is valid JSON
+	if len(experimentCR.Spec.OverrideSpec.Raw) == 0 {
+		return fmt.Errorf("overrideSpec is required and cannot be empty")
+	}
+
+	// Try to parse overrideSpec as JSON to ensure it's valid
+	var overrideData interface{}
+	if err := json.Unmarshal(experimentCR.Spec.OverrideSpec.Raw, &overrideData); err != nil {
+		return fmt.Errorf("overrideSpec is not valid JSON: %v", err)
+	}
+
 	return nil
 }
 

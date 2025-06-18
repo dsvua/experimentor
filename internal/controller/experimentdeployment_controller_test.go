@@ -46,7 +46,7 @@ var _ = Describe("ExperimentDeployment Controller", func() {
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 		recorder = record.NewFakeRecorder(100)
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&experimentcontrollercomv1alpha1.ExperimentDeployment{}).Build()
 		reconciler = &ExperimentDeploymentReconciler{
 			Client:   fakeClient,
 			Scheme:   scheme,
@@ -110,7 +110,8 @@ var _ = Describe("ExperimentDeployment Controller", func() {
 						Kind: experimentcontrollercomv1alpha1.SourceKindDeployment,
 						Name: sourceDeploymentName,
 					},
-					Replicas: func() *int32 { r := int32(1); return &r }(),
+					Replicas:     func() *int32 { r := int32(1); return &r }(),
+					OverrideSpec: apiextensionsv1.JSON{Raw: []byte("{}")},
 				},
 			}
 		})
@@ -196,7 +197,7 @@ var _ = Describe("ExperimentDeployment Controller", func() {
 			Expect(fakeClient.Create(ctx, experimentCR)).To(Succeed())
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: namespacedName})
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 			Expect(result).To(Equal(ctrl.Result{}))
 
 			updatedCR := &experimentcontrollercomv1alpha1.ExperimentDeployment{}
@@ -205,7 +206,7 @@ var _ = Describe("ExperimentDeployment Controller", func() {
 			syncedCondition := meta.FindStatusCondition(updatedCR.Status.Conditions, ConditionTypeSynced)
 			Expect(syncedCondition).NotTo(BeNil())
 			Expect(syncedCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(syncedCondition.Reason).To(Equal("UnsupportedSourceKind"))
+			Expect(syncedCondition.Reason).To(Equal("ValidationFailed"))
 		})
 
 		It("should handle deletion correctly", func() {
@@ -296,7 +297,8 @@ var _ = Describe("ExperimentDeployment Controller", func() {
 						Kind: experimentcontrollercomv1alpha1.SourceKindStatefulSet,
 						Name: sourceStatefulSetName,
 					},
-					Replicas: func() *int32 { r := int32(1); return &r }(),
+					Replicas:     func() *int32 { r := int32(1); return &r }(),
+					OverrideSpec: apiextensionsv1.JSON{Raw: []byte("{}")},
 				},
 			}
 		})
@@ -511,7 +513,8 @@ var _ = Describe("ExperimentDeployment Controller", func() {
 						Name:      "source-deployment",
 						Namespace: sourceNamespace,
 					},
-					Replicas: func() *int32 { r := int32(1); return &r }(),
+					Replicas:     func() *int32 { r := int32(1); return &r }(),
+					OverrideSpec: apiextensionsv1.JSON{Raw: []byte("{}")},
 				},
 			}
 			experimentCR.Finalizers = []string{experimentDeploymentFinalizer}

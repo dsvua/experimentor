@@ -290,7 +290,8 @@ spec:
 
 			By("waiting for source deployment to be ready")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "source-deployment", "-n", namespace, "-o", "jsonpath={.status.readyReplicas}")
+				cmd := exec.Command("kubectl", "get", "deployment", "source-deployment", "-n", namespace,
+					"-o", "jsonpath={.status.readyReplicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("3"))
@@ -325,7 +326,8 @@ spec:
 
 			By("verifying experiment deployment is created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace, "-o", "jsonpath={.spec.replicas}")
+				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace,
+					"-o", "jsonpath={.spec.replicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("1"))
@@ -333,7 +335,8 @@ spec:
 
 			By("verifying experiment deployment has correct image override")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace, "-o", "jsonpath={.spec.template.spec.containers[0].image}")
+				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace,
+					"-o", "jsonpath={.spec.template.spec.containers[0].image}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("nginx:1.16"))
@@ -341,7 +344,8 @@ spec:
 
 			By("verifying experiment deployment has experiment labels")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace, "-o", "jsonpath={.spec.template.metadata.labels['experiment-controller\\.example\\.com/role']}")
+				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace,
+					"-o", "jsonpath={.spec.template.metadata.labels['experiment-controller\\.example\\.com/role']}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("experiment"))
@@ -349,7 +353,8 @@ spec:
 
 			By("verifying ExperimentDeployment status is updated")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "experimentdeployment", "experiment-test", "-n", namespace, "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				cmd := exec.Command("kubectl", "get", "experimentdeployment", "experiment-test", "-n", namespace,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"))
@@ -403,7 +408,8 @@ spec:
 
 			By("verifying ExperimentDeployment status shows source not found")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "experimentdeployment", "experiment-missing-source", "-n", namespace, "-o", "jsonpath={.status.conditions[?(@.type=='Synced')].reason}")
+				cmd := exec.Command("kubectl", "get", "experimentdeployment", "experiment-missing-source", "-n", namespace,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Synced')].reason}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("SourceNotFound"))
@@ -476,7 +482,8 @@ spec:
 
 			By("verifying experiment deployment is created in CR namespace")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-cross-namespace", "-n", namespace, "-o", "jsonpath={.spec.replicas}")
+				cmd := exec.Command("kubectl", "get", "deployment", "experiment-cross-namespace", "-n", namespace,
+					"-o", "jsonpath={.spec.replicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("1"))
@@ -543,7 +550,8 @@ spec:
 
 			By("verifying experiment StatefulSet is created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "statefulset", "experiment-statefulset-test", "-n", namespace, "-o", "jsonpath={.spec.replicas}")
+				cmd := exec.Command("kubectl", "get", "statefulset", "experiment-statefulset-test", "-n", namespace,
+					"-o", "jsonpath={.spec.replicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("1"))
@@ -551,7 +559,8 @@ spec:
 
 			By("verifying experiment StatefulSet has correct image override")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "statefulset", "experiment-statefulset-test", "-n", namespace, "-o", "jsonpath={.spec.template.spec.containers[0].image}")
+				cmd := exec.Command("kubectl", "get", "statefulset", "experiment-statefulset-test", "-n", namespace,
+					"-o", "jsonpath={.spec.template.spec.containers[0].image}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("nginx:1.16"))
