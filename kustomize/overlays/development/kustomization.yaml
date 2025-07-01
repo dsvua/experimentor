@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: experiment-controller-development
+
+resources:
+  - ../../base
+
+namePrefix: dev-
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+
+configMapGenerator:
+  - name: controller-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=debug
+      - METRICS_BIND_ADDRESS=:8080
+
+images:
+  - name: experimentor
+    newTag: latest

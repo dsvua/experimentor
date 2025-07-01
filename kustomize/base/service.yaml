@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: experiment-controller
+  labels:
+    app.kubernetes.io/name: experiment-controller
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: experiment-controller
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8081
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: experiment-controller
+    app.kubernetes.io/component: controller
