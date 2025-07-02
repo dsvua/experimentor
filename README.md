@@ -50,26 +50,27 @@ All other container properties (ports, env vars, resources, probes, etc.) are au
 - go version v1.23.0+
 - docker version 17.03+
 - kubectl version v1.11.3+
+- helm version v3.0+
 - Access to a Kubernetes v1.11.3+ cluster
 
 ### Installation
 
-#### Option 1: Using Helm (Recommended)
+#### Using Helm (Recommended)
 
 1. **Install the controller:**
 ```bash
 helm install experiment-controller ./charts/experiment-controller/ \
-  --namespace experiment-system \
+  --namespace experimentor-system \
   --create-namespace
 ```
 
-2. **Deploy test applications:**
+2. **Deploy test applications with experiments:**
 ```bash
-# Deployment-based test app
+# Deployment-based test app (includes ExperimentDeployment examples)
 helm install ping-pong ./charts/ping-pong/ \
   --namespace default
 
-# StatefulSet-based test app  
+# StatefulSet-based test app (includes ExperimentDeployment examples)
 helm install ping-pong-statefulset ./charts/ping-pong-statefulset/ \
   --namespace default
 
@@ -78,22 +79,7 @@ helm install ping-pong-rollout ./charts/ping-pong-rollout/ \
   --namespace default
 ```
 
-#### Option 2: Using Kustomize
-
-1. **Build and push your image:**
-```bash
-make docker-build docker-push IMG=<some-registry>/experimentor:tag
-```
-
-2. **Install the CRDs:**
-```bash
-make install
-```
-
-3. **Deploy the controller:**
-```bash
-make deploy IMG=<some-registry>/experimentor:tag
-```
+**Note:** The test application charts include pre-configured ExperimentDeployment CRs that automatically create experiment versions of the deployed workloads.
 
 ## Creating Experiments
 
@@ -104,12 +90,12 @@ apiVersion: experimentcontroller.example.com/v1alpha1
 kind: ExperimentDeployment
 metadata:
   name: my-experiment           # Name of your experiment
-  namespace: default           # Namespace where experiment will be created
+  namespace: default           # Should be same namespace as source workload
 spec:
   sourceRef:                   # REQUIRED: Reference to source workload
     kind: Deployment           # REQUIRED: Deployment, StatefulSet, or Rollout
     name: my-app              # REQUIRED: Name of source workload
-    namespace: default        # OPTIONAL: Defaults to experiment's namespace
+    namespace: default        # REQUIRED: Namespace of source workload
   replicas: 1                 # OPTIONAL: Defaults to 1
   overrideSpec:               # REQUIRED: Overrides to apply
     # Any valid Deployment/StatefulSet/Rollout spec fields
@@ -120,11 +106,13 @@ spec:
 #### Required Fields
 - `spec.sourceRef.kind`: Type of source workload (`Deployment`, `StatefulSet`, `Rollout`)
 - `spec.sourceRef.name`: Name of the source workload
+- `spec.sourceRef.namespace`: Source workload namespace
 - `spec.overrideSpec`: Override specification (can be empty `{}` but must be present)
 
 #### Optional Fields
-- `spec.sourceRef.namespace`: Source workload namespace (defaults to experiment's namespace)
 - `spec.replicas`: Number of experiment replicas (defaults to 1)
+
+**Best Practice:** Deploy ExperimentDeployment CRs in the same namespace as their source workloads to ensure proper ServiceAccount access and service discovery.
 
 ### Example Use Cases
 
@@ -235,10 +223,12 @@ apiVersion: experimentcontroller.example.com/v1alpha1
 kind: ExperimentDeployment
 metadata:
   name: my-rollout-experiment
+  namespace: default
 spec:
   sourceRef:
     kind: Rollout
     name: my-app-rollout
+    namespace: default
   replicas: 1
   overrideSpec:
     template:
@@ -283,7 +273,7 @@ kubectl describe deployment my-experiment
 1. **Experiment Not Creating Pods**
    - Check if the source workload exists and is in the correct namespace
    - Verify the override spec is valid YAML
-   - Check controller logs: `kubectl logs -n experiment-system deployment/experiment-controller`
+   - Check controller logs: `kubectl logs -n experimentor-system deployment/experiment-controller`
 
 2. **Experiment Pods Not Receiving Traffic**
    - Ensure experiment pods have the same labels as source pods for service selection
@@ -304,19 +294,16 @@ kubectl delete experimentdeployment my-experiment
 # Delete all experiments
 kubectl delete experimentdeployment --all
 
-# Uninstall controller (Helm)
-helm uninstall experiment-controller -n experiment-system
-
-# Uninstall controller (Kustomize)
-make undeploy
-make uninstall
+# Uninstall controller
+helm uninstall experiment-controller -n experimentor-system
 ```
 
 ## Limitations
 
-- Experiment workloads are created in the same namespace as the ExperimentDeployment CR
+- Experiment workloads are created in the same namespace as the source workload
 - Service sharing works through label inheritance - custom service selectors may need adjustment
-- For Argo Rollouts, complex deployment strategies are simplified in experiment versions
+- Supports Deployment, StatefulSet, and Argo Rollout workloads (Rollouts require Argo Rollouts controller)
+- Cross-namespace experiments are supported but should be used carefully due to ServiceAccount constraints
 
 ## Development
 

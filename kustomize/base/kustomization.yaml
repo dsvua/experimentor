@@ -13,7 +13,7 @@ resources:
   - clusterrolebinding.yaml
   - service.yaml
   - deployment.yaml
-  - ../../config/crd/bases
+  - crd.yaml
 
 images:
   - name: experimentor

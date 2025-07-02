@@ -10,7 +10,7 @@ helm install experiment-controller ./charts/experiment-controller
 
 # Install in a custom namespace
 helm install experiment-controller ./charts/experiment-controller \
-  --namespace experiment-system \
+  --namespace experimentor-system \
   --create-namespace
 
 # Install with custom image
@@ -52,10 +52,12 @@ apiVersion: experimentcontroller.example.com/v1alpha1
 kind: ExperimentDeployment
 metadata:
   name: my-experiment
+  namespace: default  # Same namespace as source workload
 spec:
   sourceRef:
     kind: Deployment
     name: my-app
+    namespace: default
   replicas: 1
   overrideSpec:
     template:
@@ -66,3 +68,5 @@ spec:
           - name: FEATURE_FLAG
             value: "enabled"
 ```
+
+**Best Practice:** Deploy ExperimentDeployment CRs in the same namespace as their source workloads. See the ping-pong chart examples for reference implementations.

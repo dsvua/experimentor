@@ -49,7 +49,4 @@ The chart includes an example ExperimentDeployment CR that creates an experiment
 - Modified environment variables
 - Reduced resource limits
 
-Apply it with:
-```bash
-kubectl apply -f templates/experiment-example.yaml
-```
+The ExperimentDeployment is automatically deployed with the chart and will create an experiment StatefulSet in the same namespace.
