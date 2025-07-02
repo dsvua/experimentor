@@ -18,8 +18,8 @@ The controller:
 - **API Types**: `api/v1alpha1/experimentdeployment_types.go` - Defines the CRD structure with `SourceRef`, override spec, and status
 - **Controller**: `internal/controller/experimentdeployment_controller.go` - Main reconciliation logic with deep merging using `dario.cat/mergo`
 - **CRD Manifests**: Auto-generated in `config/crd/bases/` via Kubebuilder
-- **RBAC**: Defined in `config/rbac/` for necessary permissions
-- **Deployment**: Helm chart in `charts/experiment-controller/` and Kustomize configs in `config/`
+- **Deployment**: Helm chart in `charts/experiment-controller/` for controller deployment
+- **Examples**: Helm charts in `charts/ping-pong/` and `charts/ping-pong-statefulset/` with ExperimentDeployment examples
 
 The controller uses owner references for automatic cleanup and implements proper finalizers for graceful deletion handling.
 
@@ -44,17 +44,16 @@ make vet            # Run go vet
 
 **Local Development:**
 ```bash
-make install        # Install CRDs into cluster
-make run            # Run controller locally
-make uninstall      # Remove CRDs from cluster
+make run            # Run controller locally (CRDs managed by Helm)
 ```
 
 **Docker and Deployment:**
 ```bash
 make docker-build IMG=<registry>/experimentor:tag
 make docker-push IMG=<registry>/experimentor:tag
-make deploy IMG=<registry>/experimentor:tag
-make undeploy
+make helm-install IMG=<registry>/experimentor:tag    # Install controller via Helm
+make helm-uninstall                                  # Uninstall controller via Helm
+make helm-upgrade IMG=<registry>/experimentor:tag    # Upgrade controller via Helm
 ```
 
 **Dependencies:**
@@ -91,4 +90,6 @@ KUBEBUILDER_ASSETS="$(make setup-envtest)" go test ./... -coverprofile cover.out
 - Service targeting works by copying source pod labels to experiment pods
 - Owner references ensure automatic cleanup via Kubernetes garbage collection
 - Uses finalizers for graceful deletion: `experimentdeployments.experimentcontroller.example.com/finalizer`
-- Currently supports only Deployment workloads (StatefulSet/Rollout planned)
+- Supports Deployment, StatefulSet, and Argo Rollout workloads (e2e tests only cover Deployment and StatefulSet)
+- **Deployment Strategy**: Uses Helm charts for all deployments; Kustomize configs have been removed
+- **ExperimentDeployment CRs**: Should be deployed alongside source workloads in the same namespace via Helm charts

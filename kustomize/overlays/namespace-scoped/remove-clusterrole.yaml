@@ -1,0 +1,12 @@
+# This patch removes the ClusterRole and ClusterRoleBinding for namespace-scoped deployment
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: experiment-controller-manager-role
+$patch: delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: experiment-controller-manager-rolebinding
+$patch: delete

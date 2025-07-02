@@ -3,7 +3,7 @@
 apiVersion: experimentcontroller.example.com/v1alpha1
 kind: ExperimentDeployment
 metadata:
-  name: {{ include "ping-pong.fullname" . }}-experiment
+  name: {{ include "ping-pong.fullname" . }}-experiment2
   labels:
     {{- include "ping-pong.labels" . | nindent 4 }}
 spec:

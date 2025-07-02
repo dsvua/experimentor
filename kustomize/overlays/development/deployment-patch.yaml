@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: experiment-controller
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: experiment-controller-manager
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          args:
+            - --leader-elect=false
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8080

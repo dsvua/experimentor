@@ -33,11 +33,11 @@ helm install ping-pong ./charts/ping-pong \
 - Deployment of the ping-pong application
 - Service to expose the application
 - ServiceAccount
-- Example ExperimentDeployment (demonstrates experiment usage)
+- Two example ExperimentDeployments (demonstrate experiment usage)
 
 ## Testing with Experiment Controller
 
-This chart includes an example ExperimentDeployment that creates an experiment version of the ping-pong app with different environment variables:
+This chart includes two example ExperimentDeployments that create experiment versions of the ping-pong app with different environment variables:
 
 ```yaml
 apiVersion: experimentcontroller.example.com/v1alpha1

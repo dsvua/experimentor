@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: experiment-controller-namespace-scoped
+
+resources:
+  - ../../base
+  - role.yaml
+  - rolebinding.yaml
+
+patchesStrategicMerge:
+  - remove-clusterrole.yaml
+  - deployment-patch.yaml
+
+configMapGenerator:
+  - name: controller-config
+    behavior: merge
+    literals:
+      - WATCH_NAMESPACES=experiment-system

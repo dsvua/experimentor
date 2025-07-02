@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
-  name: experimentdeployments.experimentcontroller.example.com.experimentcontroller.example.com
+  name: experimentdeployments.experimentcontroller.example.com
 spec:
-  group: experimentcontroller.example.com.experimentcontroller.example.com
+  group: experimentcontroller.example.com
   names:
     categories:
     - all

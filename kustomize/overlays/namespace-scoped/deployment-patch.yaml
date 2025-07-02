@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: experiment-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: experiment-controller-manager
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --watch-namespaces=experiment-system

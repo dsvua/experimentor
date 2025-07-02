@@ -34,6 +34,7 @@ securityContext:
 service:
   type: ClusterIP
   port: 80
+  containerPort: 80
 
 ingress:
   enabled: false

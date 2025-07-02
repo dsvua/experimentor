@@ -1,8 +1,11 @@
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: manager-role
+  name: experiment-controller-manager-role
+  labels:
+    app.kubernetes.io/name: experiment-controller
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: experiment-controller
 rules:
 - apiGroups:
   - ""

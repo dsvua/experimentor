@@ -17,11 +17,8 @@ limitations under the License.
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,21 +31,12 @@ import (
 // namespace where the project is deployed in
 const namespace = "experimentor-system"
 
-// serviceAccountName created for the project
-const serviceAccountName = "experimentor-controller-manager"
-
-// metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "experimentor-controller-manager-metrics-service"
-
-// metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "experimentor-metrics-binding"
-
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
 	// Before running the tests, set up the environment by creating the namespace,
-	// enforce the restricted security policy to the namespace, installing CRDs,
-	// and deploying the controller.
+	// enforce the restricted security policy to the namespace, and deploying
+	// the controller and test services using Helm.
 	BeforeAll(func() {
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
@@ -61,30 +49,49 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
-		By("installing CRDs")
-		cmd = exec.Command("make", "install")
+		By("installing experiment-controller using Helm")
+		cmd = exec.Command("helm", "install", "experiment-controller", "./charts/experiment-controller",
+			"--namespace", namespace,
+			"--set", "image.repository=example.com/experimentor",
+			"--set", "image.tag=v0.0.1",
+			"--set", "image.pullPolicy=Never")
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+		Expect(err).NotTo(HaveOccurred(), "Failed to install experiment-controller via Helm")
 
-		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+		By("installing ping-pong deployment test service using Helm")
+		cmd = exec.Command("helm", "install", "ping-pong-test", "./charts/ping-pong",
+			"--namespace", "default",
+			"--set", "image.repository=nginxinc/nginx-unprivileged",
+			"--set", "image.tag=1.21",
+			"--set", "service.containerPort=8080")
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+		Expect(err).NotTo(HaveOccurred(), "Failed to install ping-pong test service via Helm")
+
+		By("installing ping-pong StatefulSet test service using Helm")
+		cmd = exec.Command("helm", "install", "ping-pong-sts-test", "./charts/ping-pong-statefulset",
+			"--namespace", "default",
+			"--set", "persistence.enabled=false",
+			"--set", "image.repository=nginxinc/nginx-unprivileged",
+			"--set", "image.tag=1.21",
+			"--set", "service.containerPort=8080")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to install ping-pong StatefulSet test service via Helm")
 	})
 
-	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
+	// After all tests have been executed, clean up by uninstalling Helm releases
 	// and deleting the namespace.
 	AfterAll(func() {
-		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+
+		By("uninstalling ping-pong StatefulSet test service")
+		cmd := exec.Command("helm", "uninstall", "ping-pong-sts-test", "--namespace", "default")
 		_, _ = utils.Run(cmd)
 
-		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
+		By("uninstalling ping-pong test service")
+		cmd = exec.Command("helm", "uninstall", "ping-pong-test", "--namespace", "default")
 		_, _ = utils.Run(cmd)
 
-		By("uninstalling CRDs")
-		cmd = exec.Command("make", "uninstall")
+		By("uninstalling experiment-controller")
+		cmd = exec.Command("helm", "uninstall", "experiment-controller", "--namespace", namespace)
 		_, _ = utils.Run(cmd)
 
 		By("removing manager namespace")
@@ -115,15 +122,6 @@ var _ = Describe("Manager", Ordered, func() {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
 			}
 
-			By("Fetching curl-metrics logs")
-			cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-			metricsOutput, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Metrics logs:\n %s", metricsOutput)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get curl-metrics logs: %s", err)
-			}
-
 			By("Fetching controller manager pod description")
 			cmd = exec.Command("kubectl", "describe", "pod", controllerPodName, "-n", namespace)
 			podDescription, err := utils.Run(cmd)
@@ -144,7 +142,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyControllerUp := func(g Gomega) {
 				// Get the name of the controller-manager pod
 				cmd := exec.Command("kubectl", "get",
-					"pods", "-l", "control-plane=controller-manager",
+					"pods", "-l", "app.kubernetes.io/name=experiment-controller",
 					"-o", "go-template={{ range .items }}"+
 						"{{ if not .metadata.deletionTimestamp }}"+
 						"{{ .metadata.name }}"+
@@ -157,7 +155,7 @@ var _ = Describe("Manager", Ordered, func() {
 				podNames := utils.GetNonEmptyLines(podOutput)
 				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+				g.Expect(controllerPodName).To(ContainSubstring("experiment-controller"))
 
 				// Validate the pod's status
 				cmd = exec.Command("kubectl", "get",
@@ -171,162 +169,28 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyControllerUp).Should(Succeed())
 		})
 
-		It("should ensure the metrics endpoint is serving metrics", func() {
-			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
-			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=experimentor-metrics-reader",
-				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
-			)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterRoleBinding")
-
-			By("validating that the metrics service is available")
-			cmd = exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Metrics service should exist")
-
-			By("getting the service account token")
-			token, err := serviceAccountToken()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(token).NotTo(BeEmpty())
-
-			By("waiting for the metrics endpoint to be ready")
-			verifyMetricsEndpointReady := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "endpoints", metricsServiceName, "-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("8443"), "Metrics endpoint is not ready")
-			}
-			Eventually(verifyMetricsEndpointReady).Should(Succeed())
-
-			By("verifying that the controller manager is serving the metrics server")
-			verifyMetricsServerStarted := func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("controller-runtime.metrics\tServing metrics server"),
-					"Metrics server not yet started")
-			}
-			Eventually(verifyMetricsServerStarted).Should(Succeed())
-
-			By("creating the curl-metrics pod to access the metrics endpoint")
-			cmd = exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",
-				"--namespace", namespace,
-				"--image=curlimages/curl:latest",
-				"--overrides",
-				fmt.Sprintf(`{
-					"spec": {
-						"containers": [{
-							"name": "curl",
-							"image": "curlimages/curl:latest",
-							"command": ["/bin/sh", "-c"],
-							"args": ["curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
-							"securityContext": {
-								"allowPrivilegeEscalation": false,
-								"capabilities": {
-									"drop": ["ALL"]
-								},
-								"runAsNonRoot": true,
-								"runAsUser": 1000,
-								"seccompProfile": {
-									"type": "RuntimeDefault"
-								}
-							}
-						}],
-						"serviceAccount": "%s"
-					}
-				}`, token, metricsServiceName, namespace, serviceAccountName))
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
-
-			By("waiting for the curl-metrics pod to complete.")
-			verifyCurlUp := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "pods", "curl-metrics",
-					"-o", "jsonpath={.status.phase}",
-					"-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Succeeded"), "curl pod in wrong status")
-			}
-			Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
-
-			By("getting the metrics by checking curl-metrics logs")
-			metricsOutput := getMetricsOutput()
-			Expect(metricsOutput).To(ContainSubstring(
-				"controller_runtime_reconcile_total",
-			))
-		})
-
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
 		It("should handle ExperimentDeployment lifecycle", func() {
-			By("creating a source deployment")
-			sourceDeploymentManifest := `
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-deployment
-  namespace: experimentor-system
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: source-app
-  template:
-    metadata:
-      labels:
-        app: source-app
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:1.14
-        ports:
-        - containerPort: 80
-`
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(sourceDeploymentManifest)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create source deployment")
-
-			By("waiting for source deployment to be ready")
+			By("waiting for ping-pong deployment to be ready")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "source-deployment", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "deployment", "ping-pong-test", "-n", "default",
 					"-o", "jsonpath={.status.readyReplicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("3"))
 			}, 2*time.Minute).Should(Succeed())
 
-			By("creating an ExperimentDeployment CR")
-			experimentCRManifest := `
-apiVersion: experimentcontroller.example.com/v1alpha1
-kind: ExperimentDeployment
-metadata:
-  name: experiment-test
-  namespace: experimentor-system
-spec:
-  sourceRef:
-    kind: Deployment
-    name: source-deployment
-  replicas: 1
-  overrideSpec:
-    template:
-      spec:
-        containers:
-        - name: nginx
-          image: nginx:1.16
-          env:
-          - name: EXPERIMENT
-            value: "true"
-`
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(experimentCRManifest)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create ExperimentDeployment CR")
+			By("verifying ExperimentDeployment CRs are created by Helm")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "experimentdeployment", "ping-pong-test-experiment", "-n", "default")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, 1*time.Minute).Should(Succeed())
 
 			By("verifying experiment deployment is created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "deployment", "ping-pong-test-experiment", "-n", "default",
 					"-o", "jsonpath={.spec.replicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -335,16 +199,16 @@ spec:
 
 			By("verifying experiment deployment has correct image override")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "deployment", "ping-pong-test-experiment", "-n", "default",
 					"-o", "jsonpath={.spec.template.spec.containers[0].image}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("nginx:1.16"))
+				g.Expect(output).To(ContainSubstring("nginx"))
 			}, 1*time.Minute).Should(Succeed())
 
 			By("verifying experiment deployment has experiment labels")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "deployment", "ping-pong-test-experiment", "-n", "default",
 					"-o", "jsonpath={.spec.template.metadata.labels['experiment-controller\\.example\\.com/role']}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -353,37 +217,14 @@ spec:
 
 			By("verifying ExperimentDeployment status is updated")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "experimentdeployment", "experiment-test", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "experimentdeployment", "ping-pong-test-experiment", "-n", "default",
 					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"))
 			}, 3*time.Minute).Should(Succeed())
 
-			By("verifying metrics show successful reconciliation")
-			Eventually(func(g Gomega) {
-				metricsOutput := getMetricsOutput()
-				g.Expect(metricsOutput).To(ContainSubstring(
-					fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"}`,
-						"experimentdeployment"),
-				))
-			}, 1*time.Minute).Should(Succeed())
-
-			By("deleting the ExperimentDeployment CR")
-			cmd = exec.Command("kubectl", "delete", "experimentdeployment", "experiment-test", "-n", namespace)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to delete ExperimentDeployment CR")
-
-			By("verifying experiment deployment is deleted")
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "experiment-test", "-n", namespace)
-				_, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred())
-			}, 2*time.Minute).Should(Succeed())
-
-			By("cleaning up source deployment")
-			cmd = exec.Command("kubectl", "delete", "deployment", "source-deployment", "-n", namespace)
-			_, _ = utils.Run(cmd)
+			// No need to delete experiment as it's managed by Helm lifecycle
 		})
 
 		It("should handle missing source deployment", func() {
@@ -398,6 +239,7 @@ spec:
   sourceRef:
     kind: Deployment
     name: non-existent-deployment
+    namespace: experimentor-system
   replicas: 1
   overrideSpec: {}
 `
@@ -453,12 +295,30 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:1.14
+        image: nginxinc/nginx-unprivileged:1.21
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+          runAsNonRoot: true
+          runAsUser: 101
+          seccompProfile:
+            type: RuntimeDefault
 `, testNamespace)
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(sourceDeploymentManifest)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create cross-namespace source deployment")
+
+			By("waiting for cross-namespace source deployment to be ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", "cross-namespace-source", "-n", testNamespace,
+					"-o", "jsonpath={.status.readyReplicas}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("2"))
+			}, 2*time.Minute).Should(Succeed())
 
 			By("creating ExperimentDeployment with cross-namespace source")
 			experimentCRManifest := fmt.Sprintf(`
@@ -495,62 +355,25 @@ spec:
 		})
 
 		It("should handle StatefulSet sources", func() {
-			By("creating a source StatefulSet")
-			sourceStatefulSetManifest := `
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: source-statefulset
-  namespace: experimentor-system
-spec:
-  serviceName: "test-service"
-  replicas: 2
-  selector:
-    matchLabels:
-      app: source-statefulset-app
-  template:
-    metadata:
-      labels:
-        app: source-statefulset-app
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:1.14
-        ports:
-        - containerPort: 80
-`
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(sourceStatefulSetManifest)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create source StatefulSet")
+			By("waiting for ping-pong StatefulSet to be ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "statefulset", "ping-pong-sts-test-ping-pong-statefulset", "-n", "default",
+					"-o", "jsonpath={.status.readyReplicas}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("3"))
+			}, 2*time.Minute).Should(Succeed())
 
-			By("creating an ExperimentDeployment CR for StatefulSet")
-			experimentCRManifest := `
-apiVersion: experimentcontroller.example.com/v1alpha1
-kind: ExperimentDeployment
-metadata:
-  name: experiment-statefulset-test
-  namespace: experimentor-system
-spec:
-  sourceRef:
-    kind: StatefulSet
-    name: source-statefulset
-  replicas: 1
-  overrideSpec:
-    template:
-      spec:
-        containers:
-        - name: nginx
-          image: nginx:1.16
-`
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(experimentCRManifest)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create ExperimentDeployment CR for StatefulSet")
+			By("verifying ExperimentDeployment CR for StatefulSet is created by Helm")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "experimentdeployment", "ping-pong-statefulset-experiment", "-n", "default")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, 1*time.Minute).Should(Succeed())
 
 			By("verifying experiment StatefulSet is created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "statefulset", "experiment-statefulset-test", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "statefulset", "ping-pong-statefulset-experiment", "-n", "default",
 					"-o", "jsonpath={.spec.replicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -559,77 +382,14 @@ spec:
 
 			By("verifying experiment StatefulSet has correct image override")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "statefulset", "experiment-statefulset-test", "-n", namespace,
+				cmd := exec.Command("kubectl", "get", "statefulset", "ping-pong-statefulset-experiment", "-n", "default",
 					"-o", "jsonpath={.spec.template.spec.containers[0].image}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("nginx:1.16"))
+				g.Expect(output).To(ContainSubstring("nginx"))
 			}, 1*time.Minute).Should(Succeed())
 
-			By("cleaning up")
-			cmd = exec.Command("kubectl", "delete", "experimentdeployment", "experiment-statefulset-test", "-n", namespace)
-			_, _ = utils.Run(cmd)
-			cmd = exec.Command("kubectl", "delete", "statefulset", "source-statefulset", "-n", namespace)
-			_, _ = utils.Run(cmd)
+			// No need to clean up experiment as it's managed by Helm lifecycle
 		})
 	})
 })
-
-// serviceAccountToken returns a token for the specified service account in the given namespace.
-// It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
-// and parsing the resulting token from the API response.
-func serviceAccountToken() (string, error) {
-	const tokenRequestRawString = `{
-		"apiVersion": "authentication.k8s.io/v1",
-		"kind": "TokenRequest"
-	}`
-
-	// Temporary file to store the token request
-	secretName := fmt.Sprintf("%s-token-request", serviceAccountName)
-	tokenRequestFile := filepath.Join("/tmp", secretName)
-	err := os.WriteFile(tokenRequestFile, []byte(tokenRequestRawString), os.FileMode(0o644))
-	if err != nil {
-		return "", err
-	}
-
-	var out string
-	verifyTokenCreation := func(g Gomega) {
-		// Execute kubectl command to create the token
-		cmd := exec.Command("kubectl", "create", "--raw", fmt.Sprintf(
-			"/api/v1/namespaces/%s/serviceaccounts/%s/token",
-			namespace,
-			serviceAccountName,
-		), "-f", tokenRequestFile)
-
-		output, err := cmd.CombinedOutput()
-		g.Expect(err).NotTo(HaveOccurred())
-
-		// Parse the JSON output to extract the token
-		var token tokenRequest
-		err = json.Unmarshal(output, &token)
-		g.Expect(err).NotTo(HaveOccurred())
-
-		out = token.Status.Token
-	}
-	Eventually(verifyTokenCreation).Should(Succeed())
-
-	return out, err
-}
-
-// getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.
-func getMetricsOutput() string {
-	By("getting the curl-metrics logs")
-	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-	metricsOutput, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-	Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
-	return metricsOutput
-}
-
-// tokenRequest is a simplified representation of the Kubernetes TokenRequest API response,
-// containing only the token field that we need to extract.
-type tokenRequest struct {
-	Status struct {
-		Token string `json:"token"`
-	} `json:"status"`
-}

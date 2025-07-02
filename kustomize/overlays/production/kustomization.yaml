@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: experiment-controller-production
+
+resources:
+  - ../../base
+
+namePrefix: prod-
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+  - hpa.yaml
+
+configMapGenerator:
+  - name: controller-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=info
+      - METRICS_BIND_ADDRESS=:8443
+
+images:
+  - name: experimentor
+    newName: your-registry.com/experimentor
+    newTag: v0.1.0
